@@ -209,7 +209,7 @@ static int S_get_enumlevel(cmark_node *node) {
   cmark_node *tmp = node;
   while (tmp) {
     if (tmp->type == CMARK_NODE_LIST &&
-        cmark_node_get_list_type(node) == CMARK_ORDERED_LIST) {
+        cmark_node_get_list_type(tmp) == CMARK_ORDERED_LIST) {
       enumlevel++;
     }
     tmp = tmp->parent;
@@ -336,7 +336,7 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
 
   case CMARK_NODE_THEMATIC_BREAK:
     BLANKLINE();
-    LIT("\\begin{center}\\rule{0.5\\linewidth}{\\linethickness}\\end{center}");
+    LIT("\\hrule");
     BLANKLINE();
     break;
 
@@ -409,7 +409,7 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
       case EMAIL_AUTOLINK:
         LIT("\\href{");
         OUT(url, false, URL);
-        LIT("}\\nolinkurl{");
+        LIT("}{\\nolinkurl{");
         break;
       case NORMAL_LINK:
         LIT("\\href{");
@@ -425,6 +425,9 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
         LIT("{"); // error?
       }
     } else {
+      if (get_link_type(node) == EMAIL_AUTOLINK) {
+        LIT("}"); // Close up \nolinkurl argument
+      }
       LIT("}");
     }
 

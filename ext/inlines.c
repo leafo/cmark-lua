@@ -770,8 +770,10 @@ static delimiter *S_insert_emph(subject *subj, delimiter *opener,
   closer_num_chars -= use_delims;
   opener_inl->len = opener_num_chars;
   opener_inl->data[opener_num_chars] = 0;
+  opener_inl->end_column -= use_delims;
   closer_inl->len = closer_num_chars;
   closer_inl->data[closer_num_chars] = 0;
+  closer_inl->start_column += use_delims;
 
   // free delimiters between opener and closer
   delim = closer->previous;
@@ -809,8 +811,8 @@ static delimiter *S_insert_emph(subject *subj, delimiter *opener,
 
   emph->start_line = opener_inl->start_line;
   emph->end_line = closer_inl->end_line;
-  emph->start_column = opener_inl->start_column;
-  emph->end_column = closer_inl->end_column;
+  emph->start_column = opener_inl->start_column + opener_inl->len;
+  emph->end_column = closer_inl->end_column - closer_inl->len;
 
   // if opener has 0 characters, remove it and its associated inline
   if (opener_num_chars == 0) {
@@ -929,15 +931,17 @@ static cmark_node *handle_pointy_brace(subject *subj, int options) {
   // finally, try to match an html tag
   if (subj->pos + 2 <= subj->input.len) {
     int c = subj->input.data[subj->pos];
-    if (c == '!' && (subj->flags & FLAG_SKIP_HTML_COMMENT) == 0) {
+    if (c == '!') {
       c = subj->input.data[subj->pos+1];
       if (c == '-' && subj->input.data[subj->pos+2] == '-') {
-	if (subj->input.data[subj->pos+3] == '>') {
+	if (subj->pos + 3 < subj->input.len &&
+            subj->input.data[subj->pos+3] == '>') {
 	  matchlen = 4;
-	} else if (subj->input.data[subj->pos+3] == '-' &&
+	} else if (subj->pos + 4 < subj->input.len &&
+                   subj->input.data[subj->pos+3] == '-' &&
                    subj->input.data[subj->pos+4] == '>') {
           matchlen = 5;
-        } else {
+        } else if ((subj->flags & FLAG_SKIP_HTML_COMMENT) == 0) {
           matchlen = scan_html_comment(&subj->input, subj->pos + 1);
           if (matchlen > 0) {
             matchlen += 1; // prefix "<"
@@ -1098,9 +1102,15 @@ static bufsize_t manual_scan_link_url(cmark_chunk *input, bufsize_t offset,
       if (input->data[i] == '>') {
         ++i;
         break;
-      } else if (input->data[i] == '\\')
-        i += 2;
-      else if (input->data[i] == '\n' || input->data[i] == '<')
+      } else if (input->data[i] == '\\') {
+        // a backslash escape may cover the next character, but it cannot
+        // smuggle a line ending into the destination, which is forbidden
+        // inside pointy brackets.
+        if (i + 1 < input->len && input->data[i + 1] != '\n')
+          i += 2;
+        else
+          return -1;
+      } else if (input->data[i] == '\n' || input->data[i] == '<')
         return -1;
       else
         ++i;
@@ -1491,6 +1501,10 @@ bufsize_t cmark_parse_reference_inline(cmark_mem *mem, cmark_chunk *input,
       if (!skip_line_end(&subj)) {
         return 0;
       }
+      // the previously scanned title turned out to be invalid (it was
+      // followed by trailing garbage instead of the end of the line), so
+      // the reference has no title after all.
+      title = cmark_chunk_literal("");
     } else {
       return 0;
     }

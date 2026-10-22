@@ -224,17 +224,17 @@ static void remove_trailing_blank_lines(cmark_strbuf *ln) {
 // Check to see if a node ends with a blank line, descending
 // if needed into lists and sublists.
 static bool S_ends_with_blank_line(cmark_node *node) {
-  if (S_last_line_checked(node)) {
-    return(S_last_line_blank(node));
-  } else if ((S_type(node) == CMARK_NODE_LIST ||
-              S_type(node) == CMARK_NODE_ITEM) && node->last_child) {
+  while (!S_last_line_checked(node)) {
     S_set_last_line_checked(node);
-    return(S_ends_with_blank_line(node->last_child));
-  } else {
-    S_set_last_line_checked(node);
-    return (S_last_line_blank(node));
+    if (S_type(node) != CMARK_NODE_LIST && S_type(node) != CMARK_NODE_ITEM)
+      break;
+    if (!node->last_child)
+      break;
+    node = node->last_child;
   }
+  return S_last_line_blank(node);
 }
+
 
 // returns true if content remains after link defs are resolved.
 static bool resolve_reference_link_definitions(cmark_parser *parser) {
@@ -577,6 +577,11 @@ static void S_parser_feed(cmark_parser *parser, const unsigned char *buffer,
                           size_t len, bool eof) {
   const unsigned char *end = buffer + len;
   static const uint8_t repl[] = {239, 191, 189};
+
+  // An empty chunk has nothing to process. Returning here also preserves
+  // last_buffer_ended_with_cr and avoids reading past the end of buffer.
+  if (len == 0)
+    return;
 
   if (len > UINT_MAX - parser->total_size)
     parser->total_size = UINT_MAX;
@@ -945,6 +950,9 @@ static cmark_node *check_open_blocks(cmark_parser *parser, cmark_chunk *input,
     case CMARK_NODE_HEADING:
       // a heading can never contain more than one line
       goto done;
+    case CMARK_NODE_THEMATIC_BREAK:
+      // a thematic break can never contain more than one line
+      goto done;
     case CMARK_NODE_HTML_BLOCK:
       if (!parse_html_block_prefix(parser, container))
         goto done;
@@ -981,7 +989,6 @@ static void open_new_blocks(cmark_parser *parser, cmark_node **container,
   bufsize_t matched = 0;
   int lev = 0;
   bool save_partially_consumed_tab;
-  bool has_content;
   int save_offset;
   int save_column;
 
@@ -1054,17 +1061,15 @@ static void open_new_blocks(cmark_parser *parser, cmark_node **container,
       // text
     } else if (!indented && cont_type == CMARK_NODE_PARAGRAPH &&
                (lev =
-                    scan_setext_heading_line(input, parser->first_nonspace))) {
-      // finalize paragraph, resolving reference links
-      has_content = resolve_reference_link_definitions(parser);
-
-      if (has_content) {
-
-        (*container)->type = (uint16_t)CMARK_NODE_HEADING;
-        (*container)->as.heading.level = lev;
-        (*container)->as.heading.setext = true;
-        S_advance_offset(parser, input, input->len - 1 - parser->offset, false);
-      }
+                    scan_setext_heading_line(input, parser->first_nonspace)) &&
+               resolve_reference_link_definitions(parser)) {
+      // Setext underline only if paragraph content remains after resolving
+      // reference definitions; otherwise fall through so `---` can still
+      // be a thematic break.
+      (*container)->type = (uint16_t)CMARK_NODE_HEADING;
+      (*container)->as.heading.level = lev;
+      (*container)->as.heading.setext = true;
+      S_advance_offset(parser, input, input->len - 1 - parser->offset, false);
     } else if (!indented &&
                !(cont_type == CMARK_NODE_PARAGRAPH && !all_matched) &&
                (parser->thematic_break_kill_pos <= parser->first_nonspace) &&
@@ -1196,6 +1201,9 @@ static void add_text_to_container(cmark_parser *parser, cmark_node *container,
   if (parser->current != last_matched_container &&
       container == last_matched_container && !parser->blank &&
       S_type(parser->current) == CMARK_NODE_PARAGRAPH) {
+    // Like any paragraph line, skip the leading spaces and tabs.
+    S_advance_offset(parser, input, parser->first_nonspace - parser->offset,
+                     false);
     add_line(input, parser);
   } else { // not a lazy continuation
     // Finalize any blocks that were not matched and set cur to container:

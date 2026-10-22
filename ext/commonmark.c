@@ -73,13 +73,13 @@ static inline void outc(cmark_renderer *renderer, cmark_escaping escape,
   }
 }
 
-static int longest_backtick_sequence(const char *code) {
+static int longest_char_sequence(const char *code, char c) {
   int longest = 0;
   int current = 0;
   size_t i = 0;
   size_t code_len = strlen(code);
   while (i <= code_len) {
-    if (code[i] == '`') {
+    if (code[i] == c) {
       current++;
     } else {
       if (current > longest) {
@@ -226,10 +226,9 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
       // we ensure a width of at least 4 so
       // we get nice transition from single digits
       // to double
-      snprintf(listmarker, LISTMARKER_SIZE, "%d%s%s", list_number,
+      marker_width = (bufsize_t)snprintf(listmarker, LISTMARKER_SIZE, "%d%s%s", list_number,
                list_delim == CMARK_PAREN_DELIM ? ")" : ".",
                list_number < 10 ? "  " : " ");
-      marker_width = (bufsize_t)strlen(listmarker);
     }
     if (entering) {
       if (cmark_node_get_list_type(node->parent) == CMARK_BULLET_LIST) {
@@ -239,12 +238,19 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
         LIT(listmarker);
         renderer->begin_content = true;
       }
-      for (i = marker_width; i--;) {
-        cmark_strbuf_putc(renderer->prefix, ' ');
+      if (node->first_child == NULL) {
+        BLANKLINE();
+      } else {
+        for (i = marker_width; i--;) {
+          cmark_strbuf_putc(renderer->prefix, ' ');
+        }
       }
     } else {
-      cmark_strbuf_truncate(renderer->prefix,
-                            renderer->prefix->size - marker_width);
+      // the prefix spaces are only pushed when the item has children:
+      if (node->first_child != NULL) {
+        cmark_strbuf_truncate(renderer->prefix,
+                              renderer->prefix->size - marker_width);
+      }
       CR();
     }
     break;
@@ -275,7 +281,7 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
     fencechar[0] = strchr(info, '`') == NULL ? '`' : '~';
     code = cmark_node_get_literal(node);
 
-    numticks = longest_backtick_sequence(code) + 1;
+    numticks = longest_char_sequence(code, fencechar[0]) + 1;
     if (numticks < 3) {
       numticks = 3;
     }
@@ -325,7 +331,11 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
 
   case CMARK_NODE_LINEBREAK:
     if (!(CMARK_OPT_HARDBREAKS & options)) {
-      LIT("  ");
+      // A backslash line break is unambiguous in every position. Two trailing
+      // spaces are only recognized as a hard break when they follow text on
+      // the line; at the start of a line, or after a space, they are stripped
+      // as insignificant whitespace and the break is lost on a round trip.
+      LIT("\\");
     }
     CR();
     break;
@@ -425,7 +435,7 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
         LIT("](");
         OUT(cmark_node_get_url(node), false, URL);
         title = cmark_node_get_title(node);
-        if (strlen(title) > 0) {
+        if (title[0]) {
           LIT(" \"");
           OUT(title, false, TITLE);
           LIT("\"");
@@ -442,7 +452,7 @@ static int S_render_node(cmark_renderer *renderer, cmark_node *node,
       LIT("](");
       OUT(cmark_node_get_url(node), false, URL);
       title = cmark_node_get_title(node);
-      if (strlen(title) > 0) {
+      if (title[0]) {
         OUT(" \"", allow_wrap, LITERAL);
         OUT(title, false, TITLE);
         LIT("\"");

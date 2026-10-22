@@ -32,6 +32,8 @@ cmark_wrap.c: cmark.i $(CBITS)/cmark.h
 	$(SWIG) -o $@ -lua -I$(CBITS) -DCMARK_EXPORT='' $<
 
 update: $(C_SOURCES) spec-tests.lua
+	git -C $(CMARK_DIR) describe --tags --long > $(CBITS)/UPSTREAM
+	git -C $(CMARK_DIR) rev-parse HEAD >> $(CBITS)/UPSTREAM
 
 # requires luarocks install luacheck lua-TestMore
 spec-tests.lua: $(CMARK_DIR)/test/spec.txt
