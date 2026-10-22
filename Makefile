@@ -18,7 +18,7 @@ rock: $(ROCKSPEC)
 	luarocks --local make $(ROCKSPEC)
 
 upload: rock
-	luarocks upload --api-key=${LUAROCKS_API_KEY} $(ROCKSPEC)
+	moonrocks upload $(ROCKSPEC)
 
 rockspec: $(ROCKSPEC)
 

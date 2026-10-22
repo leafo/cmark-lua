@@ -2,7 +2,7 @@ package = "cmark"
 version = "_VERSION-_REVISION"
 source = {
     url = "git+https://github.com/leafo/cmark-lua.git",
-    tag = "_VERSION"
+    tag = "v_VERSION"
 }
 description = {
     summary = [[Lua wrapper for libcmark, CommonMark Markdown parsing

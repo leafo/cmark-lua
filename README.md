@@ -216,6 +216,6 @@ with CMake as a shared library (`-DBUILD_SHARED_LIBS=ON`), since
 directory.
 
 To release, bump `VERSION` in the `Makefile`, tag the commit with
-that version and push the tag, then run `make upload` with
-`LUAROCKS_API_KEY` set.
+that version prefixed with `v` (e.g. `v0.31.2.1`) and push the tag,
+then run `make upload` (which uses `moonrocks`).
 
