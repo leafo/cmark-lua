@@ -136,6 +136,11 @@ while iterating is only safe for a node after its exit event (or
 its enter event, for leaf nodes): unlinking or freeing a node that
 the iterator has not yet finished with can crash the process.
 
+`consolidate_text_nodes` merges adjacent text nodes and frees the
+nodes merged into the first one, so references to them become
+invalid. Called on a text node, it also merges that node's following
+siblings.
+
 Nodes compare equal with `==` when they refer to the same node.
 
 Passing `nil` or a value of the wrong type where a node, iterator or
@@ -161,6 +166,9 @@ written by hand. They are compatible with the SWIG bindings except:
   past the end of the string. A negative length raises an error.
 - `nil` where a node is expected raises an error instead of
   crashing. `node_new` rejects invalid node types.
+- `render_commonmark` raises an error for a list item that has
+  children but is not in a list, or a child of one, which crashes
+  libcmark's renderer.
 - `parser_finish` can only be called once per parser, and
   `parser_feed` raises an error after it.
 - Nodes are comparable with `==`. Integers are returned as integers

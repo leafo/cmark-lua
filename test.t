@@ -300,6 +300,19 @@ subtest("binding", function()
     cmark.NODE_LIST, cmark.NODE_ITEM, cmark.NODE_PARAGRAPH, cmark.NODE_TEXT},
     "walk visits nodes in order")
 
+  local item = cmark.node_new(cmark.NODE_ITEM)
+  ok(cmark.render_commonmark(item), "render_commonmark of an empty item")
+  local item_para = cmark.node_new(cmark.NODE_PARAGRAPH)
+  cmark.node_append_child(item, item_para)
+  like(select(2, pcall(cmark.render_commonmark, item)), "not in a list",
+     "render_commonmark rejects an item that is not in a list")
+  like(select(2, pcall(cmark.render_commonmark, item_para)), "not in a list",
+     "render_commonmark rejects a child of an item that is not in a list")
+  local list = cmark.node_new(cmark.NODE_LIST)
+  cmark.node_append_child(list, item)
+  is(cmark.render_commonmark(item_para), "\n", "render_commonmark of an item in a list")
+  cmark.node_free(list)
+
   local parser = cmark.parser_new(cmark.OPT_DEFAULT)
   cmark.parser_feed(parser, "*a")
   cmark.parser_feed(parser, "b*", 2)

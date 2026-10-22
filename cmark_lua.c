@@ -483,8 +483,28 @@ static int l_render_html(lua_State *L) {
   }
 
 RENDER_WITH_WIDTH(render_man)
-RENDER_WITH_WIDTH(render_commonmark)
 RENDER_WITH_WIDTH(render_latex)
+
+static int is_detached_item(cmark_node *node) {
+  return node != NULL && cmark_node_get_type(node) == CMARK_NODE_ITEM &&
+         cmark_node_parent(node) == NULL;
+}
+
+/* The commonmark renderer reads the list containing an item when entering
+ * each of the item's children, without checking that there is one, which
+ * crashes when rendering an item that is not in a list and has children, or a
+ * child of one */
+static int l_render_commonmark(lua_State *L) {
+  cmark_node *root = check_node(L, 1);
+  int options = opt_int(L, 2, CMARK_OPT_DEFAULT);
+  luaL_argcheck(L,
+                !(is_detached_item(root) && cmark_node_first_child(root)) &&
+                    !is_detached_item(cmark_node_parent(root)),
+                1, "cannot render a list item that is not in a list");
+  push_result_string(L,
+                     cmark_render_commonmark(root, options, opt_int(L, 3, 0)));
+  return 1;
+}
 
 static int l_version(lua_State *L) {
   lua_pushinteger(L, cmark_version());
