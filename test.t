@@ -166,5 +166,111 @@ subtest("rendered strings are freed", function()
   cmark.node_free(doc)
 end)
 
+subtest("binding", function()
+  local doc = cmark.parse_string("# hi\n\n- a\n")
+  local heading = cmark.node_first_child(doc)
+
+  ok(cmark.node_parent(heading) == doc, "nodes for the same pointer are equal")
+  ok(cmark.node_next(heading) ~= doc, "different nodes are not equal")
+  is(cmark.node_parent(doc), nil, "NULL node returns nil")
+  is(cmark.node_get_literal(heading), nil, "NULL string returns nil")
+
+  is(cmark.node_set_heading_level(heading, 2), 1, "setter returns 1 on success")
+  is(cmark.node_set_heading_level(heading, 9), 0, "setter returns 0 on failure")
+  is(cmark.node_get_heading_level(heading), 2, "failed setter leaves value")
+
+  is(cmark.node_is_block(heading), true, "node_is_block")
+  is(cmark.node_is_inline(heading), false, "node_is_inline")
+  local hr = cmark.node_new(cmark.NODE_THEMATIC_BREAK)
+  is(cmark.node_is_leaf(hr), true, "node_is_leaf")
+  cmark.node_free(hr)
+
+  is(cmark.markdown_to_html("hi", 1000, cmark.OPT_DEFAULT), "<p>hi</p>\n",
+     "length longer than the string is clamped")
+  is(cmark.markdown_to_html("hi there", 2, cmark.OPT_DEFAULT), "<p>hi</p>\n",
+     "shorter length is respected")
+
+  local raw = cmark.parse_string("<b>x</b>")
+  is(cmark.render_html(raw),
+     "<p><!-- raw HTML omitted -->x<!-- raw HTML omitted --></p>\n",
+     "options default to OPT_DEFAULT")
+  cmark.node_free(raw)
+
+  ok(doc ~= io.stdout, "node compared with other userdata is not equal")
+
+  local other = cmark.parse_string("other")
+  local errors = {
+    {"node_next(nil)", function() return cmark.node_next(nil) end},
+    {"node_free(nil)", function() return cmark.node_free(nil) end},
+    {"node_get_type(string)", function() return cmark.node_get_type("x") end},
+    {"node_new(invalid type)", function() return cmark.node_new(99) end},
+    {"node_new(NaN)", function() return cmark.node_new(0/0) end},
+    {"out of range int", function() return cmark.node_set_list_start(heading, 1e12) end},
+    {"negative length", function() return cmark.markdown_to_html("x", -1) end},
+    {"NaN length", function() return cmark.markdown_to_html("x", 0/0) end},
+    {"iter_reset outside root", function()
+      return cmark.iter_reset(cmark.iter_new(doc), other, cmark.EVENT_ENTER)
+    end},
+    {"iter_reset invalid event", function()
+      return cmark.iter_reset(cmark.iter_new(doc), heading, cmark.EVENT_DONE)
+    end},
+  }
+  for _, e in ipairs(errors) do
+    is(pcall(e[2]), false, e[1] .. " raises an error")
+  end
+
+  local freed = cmark.parse_string("x")
+  cmark.node_free(freed)
+  local status, err = pcall(cmark.render_html, freed)
+  is(status, false, "using a freed node raises an error")
+  like(err, "freed cmark_node", "freed node error message")
+  is(pcall(function() return freed == other end), false,
+     "comparing a freed node raises an error")
+  cmark.node_free(other)
+
+  local reset_iter = cmark.iter_new(doc)
+  cmark.iter_reset(reset_iter, heading, cmark.EVENT_EXIT)
+  is(cmark.iter_get_node(reset_iter) == heading, true, "iter_reset within root")
+  is(cmark.iter_next(reset_iter), cmark.EVENT_ENTER, "iter_reset continues")
+  cmark.iter_free(reset_iter)
+
+  local iter = cmark.iter_new(doc)
+  cmark.iter_free(iter)
+  is(pcall(cmark.iter_next, iter), false, "using a freed iterator raises an error")
+  cmark.iter_free(iter)
+  pass("freeing an iterator twice is a no-op")
+
+  -- not freed explicitly: collected iterators and parsers free themselves,
+  -- which the sanitizer job checks
+  for _ in cmark.walk(doc) do break end
+  cmark.iter_new(doc)
+  cmark.parser_new()
+  collectgarbage()
+  collectgarbage()
+
+  local types = {}
+  for _, entering, node_type in cmark.walk(doc) do
+    if entering then types[#types + 1] = node_type end
+  end
+  is_deeply(types, {cmark.NODE_DOCUMENT, cmark.NODE_HEADING, cmark.NODE_TEXT,
+    cmark.NODE_LIST, cmark.NODE_ITEM, cmark.NODE_PARAGRAPH, cmark.NODE_TEXT},
+    "walk visits nodes in order")
+
+  local parser = cmark.parser_new(cmark.OPT_DEFAULT)
+  cmark.parser_feed(parser, "*a")
+  cmark.parser_feed(parser, "b*", 2)
+  local streamed = cmark.parser_finish(parser)
+  cmark.parser_free(parser)
+  is(cmark.render_html(streamed), "<p><em>ab</em></p>\n", "streaming parser")
+  cmark.node_free(streamed)
+
+  parser = cmark.parser_new()
+  local finished = cmark.parser_finish(parser)
+  is(pcall(cmark.parser_finish, parser), false, "finishing twice raises an error")
+  is(pcall(cmark.parser_feed, parser, "x"), false, "feeding after finish raises an error")
+  cmark.node_free(finished)
+
+  cmark.node_free(doc)
+end)
 
 done_testing()

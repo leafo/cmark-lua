@@ -54,7 +54,7 @@ jobs:
           gcc -g -O1 -fno-omit-frame-pointer \
             -fsanitize=address,undefined -fno-sanitize-recover=undefined \
             -fPIC -shared -I"$(luarocks config variables.LUA_INCDIR)" -Iext -I. \
-            -o cmark.so cmark_wrap.c ext/*.c
+            -o cmark.so cmark_lua.c ext/*.c
 
     # The sanitizer runtimes must be loaded first, so they are preloaded into
     # the Lua process only. cmark.so is also preloaded so it stays mapped at

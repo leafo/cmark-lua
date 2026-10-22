@@ -5,7 +5,6 @@ VERSION=0.31.2.1
 REVISION=1
 ROCKSPEC=cmark-$(VERSION)-$(REVISION).rockspec
 CFLAGS = -fPIC -O3 -I$(CBITS) -I.
-SWIG ?= swig
 CMARK_DIR ?= ../cmark
 OBJS = $(subst .c,.o,$(wildcard $(CBITS)/*.c))
 C_SOURCES=$(wildcard $(CBITS)/*.c $(CBITS)/*.h $(CBITS)/*.inc)
@@ -15,7 +14,7 @@ LUASTATIC=lua-5.2.4/src/liblua.a
 
 all: rock
 
-rock: cmark_wrap.c $(ROCKSPEC)
+rock: $(ROCKSPEC)
 	luarocks --local make $(ROCKSPEC)
 
 upload: rock
@@ -26,14 +25,11 @@ rockspec: $(ROCKSPEC)
 $(ROCKSPEC): rockspec.in Makefile
 	sed -e "s/_VERSION/$(VERSION)/g; s/_REVISION/$(REVISION)/g" $< > $@
 
-cmark.so: cmark_wrap.o $(OBJS)
+cmark.so: cmark_lua.o $(OBJS)
 	$(CC) -shared -o $@ -I$(CBITS) -llua $^
 
-cmark-lua.a: cmark_wrap.o $(OBJS)
+cmark-lua.a: cmark_lua.o $(OBJS)
 	ar rcs $@ $^ $(LUASTATIC)
-
-cmark_wrap.c: cmark.i $(CBITS)/cmark.h
-	$(SWIG) -o $@ -lua -I$(CBITS) -DCMARK_EXPORT='' $<
 
 update: $(C_SOURCES) spec-tests.lua
 	git -C $(CMARK_DIR) describe --tags --long > $(CBITS)/UPSTREAM

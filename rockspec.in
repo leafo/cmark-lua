@@ -7,7 +7,7 @@ source = {
 description = {
     summary = [[Lua wrapper for libcmark, CommonMark Markdown parsing
       and rendering library]],
-    detailed = [[cmark exposes the entire API of libcmark, as
+    detailed = [[cmark exposes the libcmark API, as
       documented in the `cmark(3)` man page, and adds a
       more lua-esque interface for walking the node tree.]],
     homepage = "https://github.com/leafo/cmark-lua",
@@ -21,7 +21,7 @@ build = {
     type = "builtin",
     modules = {
         cmark = {
-             sources = { "cmark_wrap.c",
+             sources = { "cmark_lua.c",
                          "ext/blocks.c",
                          "ext/houdini_html_u.c",
                          "ext/references.c",
