@@ -3,17 +3,67 @@ name: CI tests
 on: [push, pull_request]
 
 jobs:
-  linux:
-
+  test:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        luaVersion: ["5.1", "5.2", "5.3", "5.4", "5.5", "luajit-2.1", "luajit-openresty"]
+
     steps:
-    - uses: actions/checkout@v1
-    - uses: leafo/gh-actions-lua@v9
-    - uses: leafo/gh-actions-luarocks@v4
-    - name: Build and test
+    - uses: actions/checkout@v7
+    - uses: leafo/gh-actions-lua@v13
+      with:
+        luaVersion: ${{ matrix.luaVersion }}
+    - uses: leafo/gh-actions-luarocks@v6
+
+    - name: Install test dependencies
+      run: luarocks install lua-testmore
+
+    - name: Build
       run: |
           export VERSION=`grep CMARK_VERSION_STRING ext/cmark_version.h |  awk '{gsub(/["]/,""); print $3}'`
           export REVISION=1
           sed -e "s/_VERSION/${VERSION}/g; s/_REVISION/${REVISION}/g" < rockspec.in > cmark-${VERSION}-${REVISION}.rockspec
-          luarocks --local make cmark-${VERSION}-${REVISION}.rockspec
+          luarocks make cmark-${VERSION}-${REVISION}.rockspec
 
+    - name: Test
+      run: prove --exec lua test.t
+
+  # Builds the module with ASan/UBSan and runs the test suite under it.
+  # LeakSanitizer fails the run if any allocation is not freed at exit.
+  sanitizers:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+    - uses: leafo/gh-actions-lua@v13
+      with:
+        luaVersion: luajit-openresty
+    - uses: leafo/gh-actions-luarocks@v6
+
+    - name: Install test dependencies
+      run: luarocks install lua-testmore
+
+    # ASan's shadow memory layout breaks with the high ASLR entropy on
+    # recent runner kernels
+    - name: Reduce ASLR entropy
+      run: sudo sysctl vm.mmap_rnd_bits=28
+
+    - name: Build with sanitizers
+      run: |
+          gcc -g -O1 -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=undefined \
+            -fPIC -shared -I"$(luarocks config variables.LUA_INCDIR)" -Iext -I. \
+            -o cmark.so cmark_wrap.c ext/*.c
+
+    # The sanitizer runtimes must be loaded first, so they are preloaded into
+    # the Lua process only. cmark.so is also preloaded so it stays mapped at
+    # exit and leak reports keep their symbols.
+    - name: Test
+      env:
+        SKIP_RSS_TEST: "1"
+      run: |
+          PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so):$PWD/cmark.so"
+          prove --exec "env LD_PRELOAD=$PRELOAD lua" test.t

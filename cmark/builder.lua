@@ -137,6 +137,7 @@ local node = function(node_type, contains, fields)
         if contents[field] then
           local ok, msg = func(node, contents[field])
           if not ok then
+            c.node_free(node)
             return nil, msg
           end
         end
@@ -145,6 +146,7 @@ local node = function(node_type, contains, fields)
     -- treat rest as children
     local ok, msg = add_children(node, contents, contains)
     if not ok then
+      c.node_free(node)
       return nil, msg
     end
     return node

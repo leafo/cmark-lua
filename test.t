@@ -12,6 +12,7 @@ subtest("spec tests (cmark)", function()
   for _,test in ipairs(tests) do
     local doc  = cmark.parse_string(test.markdown, cmark.OPT_DEFAULT)
     local html = cmark.render_html(doc, cmark.OPT_DEFAULT + cmark.OPT_UNSAFE)
+    cmark.node_free(doc)
     is(html, test.html, "example " .. tostring(test.example) ..
            " (lines " .. tostring(test.start_line) .. " - " ..
            tostring(test.end_line) .. ")")
@@ -22,11 +23,13 @@ local b = builder
 
 local builds = function(node, expected, description)
   local rendered = cmark.render_html(node, cmark.OPT_DEFAULT + cmark.OPT_UNSAFE)
+  cmark.node_free(node)
   return is(rendered, expected, description)
 end
 
 local returns_error = function(f, arg, expected_msg, description)
   local ok, msg = f(arg)
+  cmark.node_free(arg)
   is(ok, nil, description .. ' returns error status')
   is(msg, expected_msg, description .. ' error message')
 end
@@ -134,8 +137,9 @@ local function rss_kb()
 end
 
 subtest("rendered strings are freed", function()
-  if not rss_kb() then
-    skip("no /proc/self/status", 6)
+  -- sanitizer builds hold freed memory in quarantine; LeakSanitizer covers this
+  if os.getenv("SKIP_RSS_TEST") or not rss_kb() then
+    skip("RSS measurement unavailable", 6)
     return
   end
   local md = ("# Title\n\nSome *text* with [a link](http://x.com).\n\n"):rep(100)
