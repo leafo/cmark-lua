@@ -123,5 +123,44 @@ builds(b.html_inline "<a>&amp;</a>", '<a>&amp;</a>', "raw html inline")
 builds(b.custom_inline{ on_enter = "{", on_exit = ".", "&" },
   '{&amp;.', "custom inline")
 
+-- Rendered strings are malloc'd by libcmark and must be freed by the
+-- wrapper after being copied into Lua. Measured via RSS, so Linux only.
+local function rss_kb()
+  local f = io.open("/proc/self/status")
+  if not f then return nil end
+  local status = f:read("*a")
+  f:close()
+  return tonumber(status:match("VmRSS:%s+(%d+)"))
+end
+
+subtest("rendered strings are freed", function()
+  if not rss_kb() then
+    skip("no /proc/self/status", 6)
+    return
+  end
+  local md = ("# Title\n\nSome *text* with [a link](http://x.com).\n\n"):rep(100)
+  local renderers = {
+    markdown_to_html = function() return cmark.markdown_to_html(md, #md, cmark.OPT_DEFAULT) end,
+    render_html = function(doc) return cmark.render_html(doc, cmark.OPT_DEFAULT) end,
+    render_xml = function(doc) return cmark.render_xml(doc, cmark.OPT_DEFAULT) end,
+    render_man = function(doc) return cmark.render_man(doc, cmark.OPT_DEFAULT, 0) end,
+    render_commonmark = function(doc) return cmark.render_commonmark(doc, cmark.OPT_DEFAULT, 0) end,
+    render_latex = function(doc) return cmark.render_latex(doc, cmark.OPT_DEFAULT, 0) end,
+  }
+  local doc = cmark.parse_string(md, cmark.OPT_DEFAULT)
+  for name, render in pairs(renderers) do
+    local iterations = 2000
+    render(doc)
+    collectgarbage()
+    local before = rss_kb()
+    for _ = 1, iterations do render(doc) end
+    collectgarbage()
+    local growth = rss_kb() - before
+    -- each output is several KB, so a leak would grow by well over 5MB
+    ok(growth < 5000, name .. " does not leak (grew " .. growth .. " KB)")
+  end
+  cmark.node_free(doc)
+end)
+
 
 done_testing()

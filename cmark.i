@@ -8,6 +8,16 @@
 // cmark_parse_document -> parse_document
 %rename("%(regex:/^(cmark|CMARK)_(.*)/\\2/)s") "";
 
+// These return malloc'd buffers owned by the caller. The string is copied
+// into Lua, so the buffer must be freed after it is pushed.
+%typemap(newfree) char * "free($1);";
+%newobject cmark_markdown_to_html;
+%newobject cmark_render_xml;
+%newobject cmark_render_html;
+%newobject cmark_render_man;
+%newobject cmark_render_commonmark;
+%newobject cmark_render_latex;
+
 %include "cmark.h"
 
 %{

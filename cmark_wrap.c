@@ -2735,6 +2735,7 @@ static int _wrap_markdown_to_html(lua_State* L) {
   arg3 = (int)lua_tonumber(L, 3);
   result = (char *)cmark_markdown_to_html((char const *)arg1,arg2,arg3);
   lua_pushstring(L,(const char *)result); SWIG_arg++;
+  free(result);
   return SWIG_arg;
   
   if(0) SWIG_fail;
@@ -4543,6 +4544,7 @@ static int _wrap_render_xml(lua_State* L) {
   arg2 = (int)lua_tonumber(L, 2);
   result = (char *)cmark_render_xml(arg1,arg2);
   lua_pushstring(L,(const char *)result); SWIG_arg++;
+  free(result);
   return SWIG_arg;
   
   if(0) SWIG_fail;
@@ -4570,6 +4572,7 @@ static int _wrap_render_html(lua_State* L) {
   arg2 = (int)lua_tonumber(L, 2);
   result = (char *)cmark_render_html(arg1,arg2);
   lua_pushstring(L,(const char *)result); SWIG_arg++;
+  free(result);
   return SWIG_arg;
   
   if(0) SWIG_fail;
@@ -4600,6 +4603,7 @@ static int _wrap_render_man(lua_State* L) {
   arg3 = (int)lua_tonumber(L, 3);
   result = (char *)cmark_render_man(arg1,arg2,arg3);
   lua_pushstring(L,(const char *)result); SWIG_arg++;
+  free(result);
   return SWIG_arg;
   
   if(0) SWIG_fail;
@@ -4630,6 +4634,7 @@ static int _wrap_render_commonmark(lua_State* L) {
   arg3 = (int)lua_tonumber(L, 3);
   result = (char *)cmark_render_commonmark(arg1,arg2,arg3);
   lua_pushstring(L,(const char *)result); SWIG_arg++;
+  free(result);
   return SWIG_arg;
   
   if(0) SWIG_fail;
@@ -4660,6 +4665,7 @@ static int _wrap_render_latex(lua_State* L) {
   arg3 = (int)lua_tonumber(L, 3);
   result = (char *)cmark_render_latex(arg1,arg2,arg3);
   lua_pushstring(L,(const char *)result); SWIG_arg++;
+  free(result);
   return SWIG_arg;
   
   if(0) SWIG_fail;
