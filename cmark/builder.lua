@@ -27,14 +27,15 @@ local add_children
 -- THe parameter 'contains' is a table with boolean fields 'items',
 -- 'blocks', 'inlines', and 'literal' that tells you what kind of
 -- children the table can contain.
+-- Nodes passed in that are appended are recorded in the table 'passed'.
 -- The function returns 'true' or 'nil, msg'.
-add_children = function(node, v, contains)
+add_children = function(node, v, contains, passed)
   if type(v) == 'nil' then
     return true -- just skip a nil
   end
   if type(v) == 'table' then
     for _,x in ipairs(v) do
-      local ok, msg = add_children(node, x, contains)
+      local ok, msg = add_children(node, x, contains, passed)
       if not ok then
         return nil, msg
       end
@@ -42,14 +43,15 @@ add_children = function(node, v, contains)
     return true
   elseif type(v) == 'function' then
     -- e.g. hard_break -- we want hard_break()
-    local ok, msg = add_children(node, v(), contains)
+    local ok, msg = add_children(node, v(), contains, passed)
     return ok, msg
   end
   local child
+  local created = false
   if type(v) == 'userdata' then
     child = v
   elseif contains.literal then
-    if c.node_set_literal(node, tostring(v)) then
+    if c.node_set_literal(node, tostring(v)) == 1 then
       return true
     else
       return nil, "Could not set literal"
@@ -57,56 +59,70 @@ add_children = function(node, v, contains)
   else
     -- if v is not a node, make a text node:
     child = c.node_new(c.NODE_TEXT)
-    if not child then
-      return nil, "Could not create text node"
-    end
-    if not c.node_set_literal(child, tostring(v)) then
+    created = true
+    if c.node_set_literal(child, tostring(v)) ~= 1 then
+      c.node_free(child)
       return nil, "Could not set literal"
     end
   end
+
+  -- wrap the child in a paragraph and/or item if needed for it to fit in
+  -- 'node'. 'wrapped' is the outermost node, which is appended to 'node',
+  -- and 'parent' is the node the child is appended to.
   local child_class = node_get_class(child)
-  if (child_class == 'item' and contains.items) or
-     (child_class == 'block' and contains.blocks) or
-     (child_class == 'inline' and contains.inlines) then
-    if not c.node_append_child(node, child) then
-      return nil, "Could not append child"
-    end
+  local wrapped, parent = child, node
+  local msg
+  local direct = (child_class == 'item' and contains.items) or
+                 (child_class == 'block' and contains.blocks) or
+                 (child_class == 'inline' and contains.inlines)
+  if direct then
+    msg = "Could not append child"
   elseif child_class == 'block' and contains.items then
-    local item = c.node_new(c.NODE_ITEM)
-    if not item then
-      return nil, "Could not create item node"
-    end
-    if not c.node_append_child(item, child) then
-      return nil, "Could not append child to item"
-    end
-    if not c.node_append_child(node, item) then
-      return nil, "Could not append item to node"
-    end
+    wrapped = c.node_new(c.NODE_ITEM)
+    parent = wrapped
+    msg = "Could not append child to item"
   elseif child_class == 'inline' and contains.blocks then
-    local para = c.node_new(c.NODE_PARAGRAPH)
-    if not c.node_append_child(para, child) then
-      return nil, "Could not append child to para"
-    end
-    if not c.node_append_child(node, para) then
-      return nil, "Could not append para to node"
-    end
+    wrapped = c.node_new(c.NODE_PARAGRAPH)
+    parent = wrapped
+    msg = "Could not append child to para"
   elseif child_class == 'inline' and contains.items then
-    local para = c.node_new(c.NODE_PARAGRAPH)
-    local item = c.node_new(c.NODE_ITEM)
-    if not c.node_append_child(para, child) then
-      return nil, "Could not append child to para"
-    end
-    if not c.node_append_child(item, para) then
-      return nil, "Could not append para to item"
-    end
-    if not c.node_append_child(node, item) then
-      return nil, "Could not append item to node"
-    end
+    wrapped = c.node_new(c.NODE_ITEM)
+    parent = c.node_new(c.NODE_PARAGRAPH)
+    c.node_append_child(wrapped, parent)
+    msg = "Could not append child to para"
   else
+    if created then
+      c.node_free(child)
+    end
     return nil, 'Tried to add a node with class ' .. child_class ..
                 ' to a node with class ' .. node_get_class(node)
   end
-  return true
+
+  if wrapped == child or c.node_append_child(parent, child) == 1 then
+    if c.node_append_child(node, wrapped) == 1 then
+      if not created then
+        passed[#passed + 1] = child
+      end
+      return true
+    end
+    if wrapped ~= child then
+      msg = "Could not append " .. node_get_class(wrapped) .. " to node"
+    end
+  end
+
+  -- on failure, free what was created here. A node that was passed in is
+  -- left to the caller, and is detached only if it was moved into a wrapper
+  -- (a failed append leaves it where it was).
+  if wrapped ~= child then
+    if c.node_parent(child) == parent then
+      c.node_unlink(child)
+    end
+    c.node_free(wrapped)
+  end
+  if created then
+    c.node_free(child)
+  end
+  return nil, msg
 end
 
 -- return children as a table
@@ -123,33 +139,51 @@ end
 -- contains is a table, with boolean fields 'literal', 'blocks', 'inlines',
 -- 'items'
 local node = function(node_type, contains, fields)
-  return function(contents)
-    local node = c.node_new(node_type)
-    if not node then
-      return nil, 'Could not create node of type ' .. tostring(node_type)
-    end
-    if contents == nil then
-      return node
-    end
+  -- fields are set in a fixed order, so the error for invalid contents is
+  -- deterministic
+  local field_names = {}
+  for field in pairs(fields or {}) do
+    field_names[#field_names + 1] = field
+  end
+  table.sort(field_names)
+
+  local function build(node, contents, passed)
     -- set the attributes if defined
-    if fields and type(contents) == 'table' then
-      for field,func in pairs(fields) do
+    if type(contents) == 'table' then
+      for _, field in ipairs(field_names) do
         if contents[field] then
-          local ok, msg = func(node, contents[field])
-          if not ok then
-            c.node_free(node)
-            return nil, msg
+          -- setters return 1 on success, or nil and a message
+          local ok, msg = fields[field](node, contents[field])
+          if ok ~= 1 then
+            return nil, msg or ('Could not set ' .. field)
           end
         end
       end
     end
     -- treat rest as children
-    local ok, msg = add_children(node, contents, contains)
-    if not ok then
-      c.node_free(node)
-      return nil, msg
+    return add_children(node, contents, contains, passed)
+  end
+
+  return function(contents)
+    local node = c.node_new(node_type)
+    if contents == nil then
+      return node
     end
-    return node
+    local passed = {}
+    local status, ok, msg = pcall(build, node, contents, passed)
+    if status and ok then
+      return node
+    end
+    -- on failure, or an error raised while building, return the nodes passed
+    -- in to the caller and free the rest
+    for _, child in ipairs(passed) do
+      c.node_unlink(child)
+    end
+    c.node_free(node)
+    if not status then
+      error(ok, 0)
+    end
+    return nil, msg
   end
 end
 
@@ -167,7 +201,7 @@ local function set_delim(n, delim)
   elseif delim == '.' then
     delimt = c.PERIOD_DELIM
   else
-    return nil, 'Unknown delimiter ' .. delim
+    return nil, 'Unknown delimiter ' .. tostring(delim)
   end
   return c.node_set_list_delim(n, delimt)
 end
@@ -176,20 +210,30 @@ builder.document = node(c.NODE_DOCUMENT, {blocks = true})
 
 builder.block_quote = node(c.NODE_BLOCK_QUOTE, {blocks = true})
 
-builder.ordered_list = function(contents)
-  local n = node(c.NODE_LIST, {items = true},
+local ordered_list = node(c.NODE_LIST, {items = true},
                  {delim = set_delim,
                   start = c.node_set_list_start,
                   tight = set_tight,
-                 })(contents)
+                 })
+
+builder.ordered_list = function(contents)
+  local n, msg = ordered_list(contents)
+  if not n then
+    return nil, msg
+  end
   c.node_set_list_type(n, c.ORDERED_LIST)
   return n
 end
 
-builder.bullet_list = function(contents)
-  local n = node(c.NODE_LIST, {items = true},
+local bullet_list = node(c.NODE_LIST, {items = true},
                  {tight = set_tight,
-                 })(contents)
+                 })
+
+builder.bullet_list = function(contents)
+  local n, msg = bullet_list(contents)
+  if not n then
+    return nil, msg
+  end
   c.node_set_list_type(n, c.BULLET_LIST)
   return n
 end

@@ -164,6 +164,14 @@ local mydoc = b.document{
                   b.link{ url="http://example.com", "!"} }}
 ```
 
+If a node can't be built, for example because an attribute is
+invalid or a child can't be placed in the node, the builder
+returns `nil` and an error message. Nodes passed in as children
+are still owned by the caller in that case, and are detached from
+the partially built node before it is freed. Because a nested
+builder call that fails returns `nil`, which ends the list of
+children, check each nested result if you need to detect errors.
+
 The builder functions are
 
 ```lua

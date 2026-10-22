@@ -29,7 +29,10 @@ end
 
 local returns_error = function(f, arg, expected_msg, description)
   local ok, msg = f(arg)
-  cmark.node_free(arg)
+  -- a node passed in is still owned by the caller after an error
+  if type(arg) == 'userdata' then
+    cmark.node_free(arg)
+  end
   is(ok, nil, description .. ' returns error status')
   is(msg, expected_msg, description .. ' error message')
 end
@@ -109,6 +112,47 @@ builds(b.strong(b.emph "hi"), '<strong><em>hi</em></strong>', "strong emph")
 returns_error(b.emph, b.paragraph "text",
    "Tried to add a node with class block to a node with class inline",
    "paragraph inside emph")
+
+returns_error(b.heading, {level = 9, "x"}, "Could not set level",
+   "invalid heading level")
+
+returns_error(b.ordered_list, {start = -1, "x"}, "Could not set start",
+   "negative list start")
+
+returns_error(b.ordered_list, {delim = "x", "x"}, "Unknown delimiter x",
+   "unknown list delimiter")
+
+returns_error(b.block_quote, b.document "x", "Could not append child",
+   "document inside block quote")
+
+returns_error(b.bullet_list, b.document "x", "Could not append child to item",
+   "document wrapped in item")
+
+returns_error(b.ordered_list, {start = -1, delim = "x", "x"}, "Unknown delimiter x",
+   "fields are checked in a fixed order")
+
+do
+  -- nodes passed in are returned to the caller when a later child fails
+  local para = b.paragraph "kept"
+  local inner = b.document "x"
+  local doc, msg = b.document{para, inner}
+  is(doc, nil, "failed build after appending a passed node returns nil")
+  is(msg, "Could not append child", "failed build error message")
+  is(cmark.node_parent(para), nil, "passed node is detached on failure")
+  is(cmark.render_html(para), "<p>kept</p>\n", "passed node is still usable")
+  cmark.node_free(para)
+  cmark.node_free(inner)
+
+  -- and when building raises an error
+  local text = b.text "kept"
+  local status, err = pcall(b.paragraph, {text, function() error("boom", 0) end})
+  is(status, false, "error while building is raised")
+  is(err, "boom", "error while building is passed through")
+  is(cmark.node_parent(text), nil, "passed node is detached on error")
+  cmark.node_free(text)
+
+  is(pcall(b.heading, {level = "abc", "x"}), false, "invalid field type raises an error")
+end
 
 builds(b.paragraph{"hi", b.linebreak(), "lo"}, '<p>hi<br />\nlo</p>\n',
   "linebreak")
