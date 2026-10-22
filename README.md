@@ -1,36 +1,86 @@
 cmark-lua
 =========
 
-Lua wrapper for [libcmark](https://github.com/commonmark/cmark),
-CommonMark parsing and rendering library
+[![CI tests](https://github.com/leafo/cmark-lua/actions/workflows/ci.yml/badge.svg)](https://github.com/leafo/cmark-lua/actions/workflows/ci.yml)
 
-This is a maintained fork of [jgm/cmark-lua](https://github.com/jgm/cmark-lua),
-published to LuaRocks under the `leafo` namespace. The module is still
-loaded with `require("cmark")`.
+Lua bindings for [libcmark](https://github.com/commonmark/cmark), the
+reference C implementation of the [CommonMark](https://commonmark.org)
+Markdown parser and renderer. Works with Lua 5.1 through 5.5 and LuaJIT
+(including OpenResty).
 
-To install:  `luarocks install leafo/cmark` (requires LuaRocks 3.0+).
+About this fork
+---------------
+
+This is a maintained fork of
+[jgm/cmark-lua](https://github.com/jgm/cmark-lua) by John MacFarlane,
+which is no longer updated. Compared to the original:
+
+- The C sources track upstream cmark, including fixes that are not
+  yet in a tagged cmark release. The exact upstream commit is
+  recorded in [`ext/UPSTREAM`](ext/UPSTREAM).
+- The SWIG-generated bindings were replaced with hand-written
+  bindings. Rendered output is identical, but the original leaked
+  every string returned by `markdown_to_html` and the `render_*`
+  functions, and could read past the end of the input or crash the
+  process when given bad arguments. See
+  [Differences from jgm/cmark-lua](#differences-from-jgmcmark-lua).
+- Errors in `cmark.builder` are now detected and reported, instead of
+  silently producing incomplete trees.
+- The test suite runs in CI on every supported Lua version, and
+  under AddressSanitizer, UndefinedBehaviorSanitizer and
+  LeakSanitizer.
+
+The module name and API are the same, so existing code using
+`require("cmark")` keeps working, apart from the few changes listed
+in that section.
+
+Installation
+------------
+
+```bash
+luarocks install leafo/cmark
+```
+
+This needs LuaRocks 3.0 or newer, for namespaced rocks. The rock is
+still named `cmark`, so if the original rock is installed, this
+replaces it.
 
 Always install with the `leafo/` prefix. An unprefixed
 `luarocks install cmark`, or another rock depending on `cmark`,
 resolves to the original rock.
 
 Rock versions are the upstream cmark version followed by a release
-number for these bindings, e.g. `0.31.2.1`. The exact upstream commit
-the C sources were taken from is recorded in `ext/UPSTREAM`.
+number for these bindings: `0.31.2.1` is the first release of these
+bindings based on cmark 0.31.2, plus any later upstream fixes recorded
+in `ext/UPSTREAM`.
 
 cmark
 -----
 
 `cmark` exposes the libcmark API, as documented in the `cmark(3)`
-man page.  Basic usage:
+man page.
+
+The simplest way to render Markdown is `markdown_to_html`, which
+manages all of the memory involved:
 
 ``` lua
 local cmark = require("cmark")
 
+local html = cmark.markdown_to_html(input, #input, cmark.OPT_DEFAULT)
+```
+
+To work with the document tree, parse and render separately. The
+document must then be freed with `node_free` (see
+[Memory](#memory)):
+
+``` lua
 local doc = cmark.parse_string(input, cmark.OPT_DEFAULT)
 local html = cmark.render_html(doc, cmark.OPT_DEFAULT)
 cmark.node_free(doc)
 ```
+
+Raw HTML in the input is omitted unless `cmark.OPT_UNSAFE` is passed.
+If you enable it, sanitize the output yourself.
 
 For convenience, constants and functions are renamed so that
 an initial `cmark_` or `CMARK_` is omitted:  for example,
@@ -68,7 +118,8 @@ end
 
 Nodes are not garbage collected. The memory allocated by libcmark
 for a document must be freed by calling `cmark.node_free` on the
-document node, which frees all of its children as well. A node
+document node, which frees all of its children as well. Forgetting
+to do so leaks the whole document. A node
 value that has been passed to `node_free` raises an error if it is
 used again, but other references to the freed nodes (such as
 children obtained earlier) are not tracked and must not be used.
@@ -124,7 +175,8 @@ written by hand. They are compatible with the SWIG bindings except:
   `parse_file`, `node_get_user_data` and `node_set_user_data`.
 
 For a higher-level interface, see
-[lcmark](https://github.com/jgm/lcmark).
+[lcmark](https://github.com/jgm/lcmark), which works with this rock
+installed in place of the original.
 
 cmark.builder
 -------------
@@ -205,8 +257,10 @@ For developers
 
 `make` builds the rock and installs it locally.
 
-`make test` runs some tests.  These are in `test.t`.
-You'll need the `prove` executable and the `lua-TestMore` rock.
+`make test` runs the tests in `test.t`, which include the CommonMark
+spec examples. You'll need the `prove` executable and the
+`lua-testmore` rock. CI also runs the tests under sanitizers; see
+`.github/workflows/ci.yml` for the commands.
 
 `make update` will update the C sources and spec test from the
 `../cmark` directory (override with `CMARK_DIR=...`), and record
@@ -219,3 +273,9 @@ To release, bump `VERSION` in the `Makefile`, tag the commit with
 that version prefixed with `v` (e.g. `v0.31.2.1`) and push the tag,
 then run `make upload` (which uses `moonrocks`).
 
+License
+-------
+
+BSD 2-Clause, see [LICENSE](LICENSE). Originally written by John
+MacFarlane. The vendored libcmark sources in `ext/` are covered by
+their own licenses, in [`ext/COPYING`](ext/COPYING).

@@ -31,7 +31,7 @@ cmark.so: cmark_lua.o $(OBJS)
 cmark-lua.a: cmark_lua.o $(OBJS)
 	ar rcs $@ $^ $(LUASTATIC)
 
-update: $(C_SOURCES) spec-tests.lua
+update: $(C_SOURCES) $(CBITS)/COPYING spec-tests.lua
 	git -C $(CMARK_DIR) describe --tags --long > $(CBITS)/UPSTREAM
 	git -C $(CMARK_DIR) rev-parse HEAD >> $(CBITS)/UPSTREAM
 
@@ -46,6 +46,9 @@ $(CBITS)/cmark_export.h: $(CMARK_DIR)/build/src/cmark_export.h
 	cp $< $@
 
 $(CBITS)/cmark_version.h: $(CMARK_DIR)/build/src/cmark_version.h
+	cp $< $@
+
+$(CBITS)/COPYING: $(CMARK_DIR)/COPYING
 	cp $< $@
 
 $(CBITS)/%: $(CMARK_DIR)/src/%
