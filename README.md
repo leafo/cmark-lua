@@ -1,10 +1,22 @@
 cmark-lua
 =========
 
-Lua wrapper for [libcmark](https://github.com/jgm/cmark),
+Lua wrapper for [libcmark](https://github.com/commonmark/cmark),
 CommonMark parsing and rendering library
 
-To install:  `luarocks install cmark`.
+This is a maintained fork of [jgm/cmark-lua](https://github.com/jgm/cmark-lua),
+published to LuaRocks under the `leafo` namespace. The module is still
+loaded with `require("cmark")`.
+
+To install:  `luarocks install leafo/cmark` (requires LuaRocks 3.0+).
+
+Always install with the `leafo/` prefix. An unprefixed
+`luarocks install cmark`, or another rock depending on `cmark`,
+resolves to the original rock.
+
+Rock versions are the upstream cmark version followed by a release
+number for these bindings, e.g. `0.31.2.1`. The exact upstream commit
+the C sources were taken from is recorded in `ext/UPSTREAM`.
 
 cmark
 -----
@@ -138,5 +150,13 @@ For developers
 You'll need the `prove` executable and the `lua-TestMore` rock.
 
 `make update` will update the C sources and spec test from the
-`../cmark` directory.
+`../cmark` directory (override with `CMARK_DIR=...`), and record
+the upstream commit in `ext/UPSTREAM`. `../cmark` must be built
+with CMake as a shared library (`-DBUILD_SHARED_LIBS=ON`), since
+`cmark_export.h` and `cmark_version.h` are copied from its build
+directory.
+
+To release, bump `VERSION` in the `Makefile`, tag the commit with
+that version and push the tag, then run `make upload` with
+`LUAROCKS_API_KEY` set.
 

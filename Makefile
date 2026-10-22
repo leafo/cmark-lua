@@ -1,5 +1,7 @@
 CBITS = ext
-VERSION=$(shell grep CMARK_VERSION_STRING $(CBITS)/cmark_version.h | awk '{print $$3}')
+# Rock version: the upstream cmark version plus a counter for releases of
+# these bindings. ext/UPSTREAM records the exact upstream commit.
+VERSION=0.31.2.1
 REVISION=1
 ROCKSPEC=cmark-$(VERSION)-$(REVISION).rockspec
 CFLAGS = -fPIC -O3 -I$(CBITS) -I.
@@ -9,7 +11,7 @@ OBJS = $(subst .c,.o,$(wildcard $(CBITS)/*.c))
 C_SOURCES=$(wildcard $(CBITS)/*.c $(CBITS)/*.h $(CBITS)/*.inc)
 LUASTATIC=lua-5.2.4/src/liblua.a
 
-.PHONY: clean, distclean, test, all, rocks, update, check
+.PHONY: clean distclean test all rock rockspec upload update check
 
 all: rock
 
@@ -19,7 +21,9 @@ rock: cmark_wrap.c $(ROCKSPEC)
 upload: rock
 	luarocks upload --api-key=${LUAROCKS_API_KEY} $(ROCKSPEC)
 
-$(ROCKSPEC): rockspec.in
+rockspec: $(ROCKSPEC)
+
+$(ROCKSPEC): rockspec.in Makefile
 	sed -e "s/_VERSION/$(VERSION)/g; s/_REVISION/$(REVISION)/g" $< > $@
 
 cmark.so: cmark_wrap.o $(OBJS)

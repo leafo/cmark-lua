@@ -23,10 +23,8 @@ jobs:
 
     - name: Build
       run: |
-          export VERSION=`grep CMARK_VERSION_STRING ext/cmark_version.h |  awk '{gsub(/["]/,""); print $3}'`
-          export REVISION=1
-          sed -e "s/_VERSION/${VERSION}/g; s/_REVISION/${REVISION}/g" < rockspec.in > cmark-${VERSION}-${REVISION}.rockspec
-          luarocks make cmark-${VERSION}-${REVISION}.rockspec
+          make rockspec
+          luarocks make cmark-*.rockspec
 
     - name: Test
       run: prove --exec lua test.t

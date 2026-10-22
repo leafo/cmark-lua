@@ -1,7 +1,7 @@
 package = "cmark"
 version = "_VERSION-_REVISION"
 source = {
-    url = "git://github.com/jgm/cmark-lua",
+    url = "git+https://github.com/leafo/cmark-lua.git",
     tag = "_VERSION"
 }
 description = {
@@ -10,11 +10,12 @@ description = {
     detailed = [[cmark exposes the entire API of libcmark, as
       documented in the `cmark(3)` man page, and adds a
       more lua-esque interface for walking the node tree.]],
-    homepage = "https://github.com/jgm/cmark-lua",
+    homepage = "https://github.com/leafo/cmark-lua",
     license = "BSD2",
-    maintainer = "John MacFarlane <jgm@berkeley.edu>",
+    maintainer = "Leaf Corcoran <leafot@gmail.com>",
 }
 dependencies = {
+    "lua >= 5.1",
 }
 build = {
     type = "builtin",
