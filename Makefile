@@ -1,7 +1,7 @@
 CBITS = ext
 # Rock version: the upstream cmark version plus a counter for releases of
 # these bindings. ext/UPSTREAM records the exact upstream commit.
-VERSION=0.31.2.1
+VERSION=0.31.2.2
 REVISION=1
 ROCKSPEC=cmark-$(VERSION)-$(REVISION).rockspec
 CFLAGS = -fPIC -O2 -I$(CBITS)

@@ -67,7 +67,7 @@ static void S_parser_feed(cmark_parser *parser, const unsigned char *buffer,
                           size_t len, bool eof);
 
 static void S_process_line(cmark_parser *parser, const unsigned char *buffer,
-                           bufsize_t bytes);
+                           ptrdiff_t bytes);
 
 static cmark_node *make_block(cmark_mem *mem, cmark_node_type tag,
                               int start_line, int start_column) {
@@ -289,7 +289,10 @@ static cmark_node *finalize(cmark_parser *parser, cmark_node *b) {
   {
     has_content = resolve_reference_link_definitions(parser);
     if (!has_content) {
-      // remove blank node (former reference def)
+      // remove blank node (former reference def), but remember that
+      // the enclosing list item had content
+      if (S_type(parent) == CMARK_NODE_ITEM)
+        parent->flags |= CMARK_NODE__ITEM_HAD_CONTENT;
       cmark_node_free(b);
     } else {
       b->len = node_content->size;
@@ -314,9 +317,8 @@ static cmark_node *finalize(cmark_parser *parser, cmark_node *b) {
         b->as.code.info = NULL;
       } else {
         cmark_strbuf tmp = CMARK_BUF_INIT(parser->mem);
-        houdini_unescape_html_f(&tmp, node_content->ptr, pos);
+        cmark_unescape_string(true, &tmp, node_content->ptr, pos);
         cmark_strbuf_trim(&tmp);
-        cmark_strbuf_unescape(&tmp);
         b->as.code.info = cmark_strbuf_detach(&tmp);
       }
 
@@ -601,7 +603,7 @@ static void S_parser_feed(cmark_parser *parser, const unsigned char *buffer,
   parser->last_buffer_ended_with_cr = false;
   while (buffer < end) {
     const unsigned char *eol;
-    bufsize_t chunk_len;
+    ptrdiff_t chunk_len;
     bool process = false;
     for (eol = buffer; eol < end; ++eol) {
       if (S_is_line_end_char(*eol)) {
@@ -810,9 +812,11 @@ static bool parse_node_item_prefix(cmark_parser *parser, cmark_chunk *input,
                                         container->as.list.padding,
                      true);
     res = true;
-  } else if (parser->blank && container->first_child != NULL) {
-    // if container->first_child is NULL, then the opening line
-    // of the list item was blank after the list marker; in this
+  } else if (parser->blank &&
+             (container->first_child != NULL ||
+              (container->flags & CMARK_NODE__ITEM_HAD_CONTENT))) {
+    // if the list item has never had any content, then the opening
+    // line of the list item was blank after the list marker; in this
     // case, we are done with the list item.
     S_advance_offset(parser, input, parser->first_nonspace - parser->offset,
                      false);
@@ -1278,7 +1282,7 @@ static void add_text_to_container(cmark_parser *parser, cmark_node *container,
 
 /* See http://spec.commonmark.org/0.24/#phase-1-block-structure */
 static void S_process_line(cmark_parser *parser, const unsigned char *buffer,
-                           bufsize_t bytes) {
+                           ptrdiff_t bytes) {
   cmark_node *last_matched_container;
   bool all_matched = true;
   cmark_node *container;
